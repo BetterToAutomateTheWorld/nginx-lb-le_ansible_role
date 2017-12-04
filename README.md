@@ -6,7 +6,7 @@ LetsEncrypt acme.sh binary can be used to require LE certificates.
 
 Originally written by VerosK and modified by Darcidride.
 
-## Changelog for the Darcidride imoprovments
+## Changelog for the Darcidride tweaks
 
 - Don't use "sudo" rights on all tasks but only on specific tasks
 - Fix some rights issue because don't use anymore "sudo" on all tasks
