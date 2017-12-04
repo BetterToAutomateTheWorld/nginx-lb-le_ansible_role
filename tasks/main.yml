@@ -1,0 +1,77 @@
+---
+- include_vars: '{{ ansible_os_family }}.yml'
+
+- set_fact:
+    nginx_user: '{{ nginx_user|default(_nginx_default_user) }}'
+    nginx_group: '{{ nginx_group|default(_nginx_default_group) }}'
+
+- include: setup-RedHat.yml
+  when: ansible_os_family == "RedHat"
+
+- include: setup-Debian.yml
+  when: ansible_os_family == "Debian"
+
+- name: Enable ports 80 & 443
+  firewalld: permanent=yes immediate=yes
+             service={{ item }} zone=public state=enabled
+  with_items: [ http, https ]
+  when: nginx_firewalld_enable
+  ignore_errors: '{{ nginx_firewalld_ignore_errors }}'
+
+- name: Create safe DH params
+  include: nginx-dhparams.yml
+
+- name: Create sites.d
+  become: yes
+  file:
+    dest: "{{ nginx_sites_dir }}"
+    state: directory
+    owner: '{{ nginx_user }}'
+    group: '{{ nginx_group }}'
+  when: nginx_sites_dir is defined
+
+- name: Create passwords_dir
+  become: yes
+  file:
+    dest: "{{ nginx_htpasswd_dir }}"
+    state: directory
+  when: nginx_htpasswd_dir is defined
+
+- name: Drop default config
+  file:
+    dest: /etc/nginx/conf.d/default.conf
+    state: absent
+  notify: reload nginx
+  tags: default_server
+
+- name: Make sure empty config files exists
+  include: nginx_static_site_preflight.yml
+  with_items: '{{ nginx_sites }}'
+  loop_control:
+    loop_var: nginx_site
+
+- name: Create master config
+  become: yes
+  template:
+    dest: /etc/nginx/nginx.conf
+    src: '{{ nginx_basic_template }}'
+    backup: true
+  notify: reload nginx
+
+- name: Create .well-known directory
+  become: yes
+  file:
+    dest: /var/www/.well-known
+    state: directory
+
+- name: Create static sites
+  include: nginx_static_site.yml
+  with_items: '{{ nginx_sites }}'
+  loop_control:
+    loop_var: nginx_site
+
+- name: Enable nginx
+  service:
+    name: nginx
+    enabled: yes
+    state: started

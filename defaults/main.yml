@@ -1,0 +1,58 @@
+
+nginx_sites_dir: /etc/nginx/sites.d
+nginx_htpasswd_dir: /etc/nginx/basic_auth.d
+
+nginx_deb_packages:
+   - nginx
+
+nginx_yum_repo: epel
+nginx_yum_packages:
+   - nginx
+
+nginx_worker_process_count: 1
+nginx_worker_connections: 768
+
+#
+#nginx_user: nobody
+#nginx_group: nobody
+
+nginx_dhparam_bits: 4096
+
+
+nginx_make_config_backup: false
+
+#nginx_firewalld_enable default is true
+nginx_firewalld_enable: false
+#nginx_firewalld_ignore_errors default is false
+nginx_firewalld_ignore_errors: true
+
+nginx_basic_template: nginx-main.conf.j2
+nginx_sendfile_enable: true
+
+nginx_sites:
+# nginx_sites: []
+  - name: "{{ fqdn_nginx }}"
+    is_default: true
+    with_ssl: true
+    without_ssl: false
+    request_acme_cert: true
+
+#  - name: gitlab.toaster.cz
+#    is_default: true
+#    with_ssl: true
+#    without_ssl: false
+#    request_acme_cert: true
+#    http_basic_auth:
+#        foo: $apr1$bIt0YLXq$ZNnbl5xVAZgA6Mz2.qa4i/
+#        bar:  $apr1$bIt0YLXq$ZNnbl5xVAZgA6Mz2.qa4i/
+#    root_config: >
+#        location / {
+#                proxy_pass http://127.0.0.1:{{ gitlab_http_port }}/;
+#                proxy_read_timeout 90;
+#                proxy_set_header Host        $http_host;
+#                proxy_set_header X-Forwarded-For $remote_addr;
+#                proxy_set_header X-Forwarded-Proto "https";
+#        #       proxy_set_header X-Forwarded-User $remote_user;
+#
+#                client_max_body_size    128m;
+#        }

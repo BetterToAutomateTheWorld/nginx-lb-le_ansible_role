@@ -1,0 +1,144 @@
+---
+- set_fact:
+    _nginx_host_passwd_file: "{{nginx_htpasswd_dir}}/{{nginx_site.name }}.htpasswd"
+    _nginx_pki_dir: "/etc/pki/acme/{{ nginx_site.name }}"
+    _nginx_root: "/var/www/{{ nginx_site.name }}"
+
+- name: Create {{ nginx_site.name }} certificate directory
+  become: yes
+  file:
+    dest: '{{ _nginx_pki_dir }}'
+    state: directory
+    owner: '{{ acme_user }}'
+
+# - name: Create <{{ nginx_site.name }}> VH directory with ownership
+#   become: yes
+#   file:
+#     dest: '{{ nginx_sites_dir }}'
+#     state: directory
+#     recurse: yes
+#     owner: '{{ nginx_user }}'
+#     group: '{{ nginx_group }}'
+
+- name: "Create <{{ nginx_site.name }}> config"
+  become: yes
+  template:
+    dest: "{{ nginx_sites_dir }}/{{ nginx_site.name }}.conf"
+    src: nginx-frontend-conf.j2
+    backup: '{{ nginx_make_config_backup }}'
+  notify: reload nginx
+
+- name: "Create <{{ nginx_site.name }}> root"
+  file:
+    path: '{{ _nginx_root }}'
+    state: directory
+
+- name: "Create <{{ nginx_site.name }}> index"
+  become: yes
+  copy:
+    dest: '{{ _nginx_root }}/index.html'
+    content: 'Hello to {{ nginx_site.name }}'
+    force: no
+
+- name: "Create <{{ nginx_site.name }}> passwords"
+  template:
+    dest: "{{ _nginx_host_passwd_file }}"
+    src: nginx-htpasswd.j2
+  when: nginx_site.http_basic_auth is defined
+
+- name: Check certificate exists
+  stat:
+    path: '{{ _nginx_pki_dir }}/fullchain.pem'
+  register: need_chainfile
+
+- name: Create dummy chainfile
+  shell: |
+    openssl req -x509 -newkey rsa:4096 -keyout key.pem -out fullchain.pem -days 42 -nodes -subj '/C=XX/O=Dummy Certificate/CN={{ nginx_site.name }}'
+  args:
+    chdir: '{{ _nginx_pki_dir }}'
+    creates: '{{ _nginx_pki_dir }}/fullchain.pem'
+  # become_user: '{{ acme_user }}'
+  become: yes
+  when: nginx_site.with_ssl and need_chainfile
+  register: need_chainfile
+
+# - name: "644 rights on '{{ _nginx_pki_dir }}/{{item}}'"
+#   file:
+#     path: '{{ _nginx_pki_dir }}/{{item}}'
+#     state: file
+#     owner: '{{ acme_user }}'
+#     group: '{{ nginx_group }}'
+#     mode: '0644'
+
+- name: "Make sure nginx can read temporary certificates"
+  become: yes
+  file:
+    path: '{{ _nginx_pki_dir }}/{{item}}'
+    state: file
+    owner: '{{ acme_user }}'
+    group: '{{ nginx_group }}'
+    mode: '0640'
+  with_items:
+      - fullchain.pem
+      - key.pem
+  when: need_chainfile|changed
+
+- name: Restart nginx with added config
+  service:
+    name: nginx
+    state: restarted
+  when: need_chainfile|changed
+
+- name: "Delete test certs"
+  become: yes
+  file:
+    path: '{{ _nginx_pki_dir }}/{{item}}'
+    state: absent
+  with_items:
+      - fullchain.pem
+      - cert.pem
+      - key.pem
+  # when: need_chainfile|changed
+
+- name: Rights 755 and '{{ acme_user }}':'{{ nginx_group }}' user on '{{ _nginx_pki_dir }}' directory
+  become: yes
+  file:
+    path: /var/www/.well-known/
+    recurse: yes
+    owner: '{{ acme_user }}'
+    group: '{{ nginx_group }}'
+    mode: 0755
+
+- name: Generate LE certificate
+  shell: >
+      "{{ acme_home_dir }}/acme.sh" --issue -d "{{ nginx_site.name }}" -w /var/www
+  args:
+    chdir: '{{ _nginx_pki_dir }}'
+    creates: '{{ acme_data_dir }}/{{ nginx_site.name }}/fullchain.cer'
+  become_user: '{{ acme_user }}'
+  become: yes
+  notify: reload nginx
+  when: nginx_site.request_acme_cert and nginx_site.with_ssl and need_chainfile
+
+- name: Install LE certificate
+  shell: >
+      "{{ acme_home_dir }}/acme.sh" --staging
+      --installcert -d "{{ nginx_site.name }}"
+      --certpath "{{ _nginx_pki_dir }}/cert.pem"
+      --keypath  "{{ _nginx_pki_dir }}/key.pem"
+      --capath  "{{ _nginx_pki_dir }}/ca.pem"
+      --fullchainpath "{{ _nginx_pki_dir }}/fullchain.pem"
+      # --reloadcmd "sudo systemctl reload nginx"
+  args:
+    chdir: '{{ _nginx_pki_dir }}'
+    creates: '{{ _nginx_pki_dir }}/fullchain.pem'
+  become_user: '{{ acme_user }}'
+  become: yes
+  notify: restart nginx
+  when: nginx_site.request_acme_cert and nginx_site.with_ssl
+
+- name: Reload Nginx for LE
+  become: yes
+  service:
+    name: nginx
+    state: reloaded

@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: Originally VerosK and modified by Darcidride
+  description: This role sets-up nginx with Lets Encrypt certificates
+  license: BSD
+  min_ansible_version: 2.1
+  platforms:
+  - name: EL
+    versions:
+    - 7
+  - name: Ubuntu
+    versions:
+    - xenial
+    - zesty
+
+dependencies:
+   - role: acme-sh

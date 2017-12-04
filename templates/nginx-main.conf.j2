@@ -1,0 +1,49 @@
+# {{ ansible_managed }}
+
+user  {{  nginx_user }};
+worker_processes  {{  nginx_worker_process_count }};
+
+error_log  /var/log/nginx/error.log;
+#error_log  /var/log/nginx/error.log  notice;
+#error_log  /var/log/nginx/error.log  info;
+
+pid        /run/nginx.pid;
+
+events {
+    worker_connections  {{  nginx_worker_connections }};
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for" '
+                      'TR:$request_time US:$upstream_response_time';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        {{ nginx_sendfile_enable|ternary("on","off") }};
+    #tcp_nopush     on;
+
+    #keepalive_timeout  0;
+    keepalive_timeout  65;
+
+    #gzip  on;
+
+    index   index.html index.htm;
+
+    # Load modular configuration files from the /etc/nginx/conf.d directory.
+    # See http://nginx.org/en/docs/ngx_core_module.html#include
+    # for more information.
+
+    include /etc/nginx/conf.d/*.conf;
+
+    # Load ansible configured files
+    {% for site in nginx_sites %}
+    include {{ nginx_sites_dir }}/{{ site.name }}.conf ;
+    {% endfor %}
+
+}
+# {{ ansible_managed }}
